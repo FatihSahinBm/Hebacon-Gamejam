@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "threejs-scene-builder": {
+      "source": "jarrodmedrano/jarrod-claude-skills",
+      "sourceType": "github",
+      "computedHash": "999b091631a6704ea7bfc69980892194019d8f4071c9b0174e3581a8af00b0ea"
+    }
+  }
+}
