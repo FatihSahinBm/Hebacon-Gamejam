@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Watermelon Smash</title>
+    <style>
+        /* Base styles / CSS reset */
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #0a0a0a;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            cursor: pointer;
+        }
+
+        /* Intense bright flash effect overlay */
+        #flash-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: white;
+            opacity: 0;
+            pointer-events: none; /* Let clicks pass through until flashed */
+            transition: opacity 0.1s ease-out; /* Immediate bright flash */
+            z-index: 10;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #flash-overlay.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        /* Post-flash white screen content */
+        .white-screen-content {
+            opacity: 0;
+            transform: scale(0.9);
+            transition: all 1s ease-out;
+            transition-delay: 0.5s;
+            color: black;
+            text-align: center;
+        }
+
+        .white-screen-content.show {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        .white-screen-content h1 {
+            font-size: 5rem;
+            margin-bottom: 0px;
+        }
+
+        /* UI Text for the game */
+        #ui-layer {
+            position: fixed;
+            top: 40px;
+            width: 100%;
+            text-align: center;
+            color: white;
+            pointer-events: none;
+            z-index: 5;
+            user-select: none;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+        }
+
+        /* Visual DOM crack/hit effect created on click */
+        .crack {
+            position: absolute;
+            background-image: radial-gradient(circle, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0) 70%);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            animation: ping 0.4s cubic-bezier(0, 0, 0.2, 1) forwards;
+            z-index: 6;
+        }
+
+        @keyframes ping {
+            0% { width: 0; height: 0; opacity: 1; }
+            100% { width: 120px; height: 120px; opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div id="ui-layer">
+        <h1>Karpuzu Gümletmeye Hazır Mısın?</h1>
+        <p id="click-counter">0 / 5</p>
+    </div>
+    
+    <div id="canvas-container"></div>
+    
+    <div id="flash-overlay">
+        <div class="white-screen-content" id="final-text">
+            <h1>GÜÜÜÜM!</h1>
+            <p>Geçmiş Olsun, Gitti Güzelim Karpuz...</p>
+        </div>
+    </div>
+    
+    <!-- Video element for esma.mp4 -->
+    <video id="esma-video" src="video/esma.mp4" style="position: fixed; bottom: 20px; right: 20px; width: 300px; opacity: 0; pointer-events: none; z-index: 4; transition: opacity 1s ease-in-out; border-radius: 10px; box-shadow: 0 0 20px rgba(0,0,0,0.5);" playsinline></video>
+
+    <!-- Include Three.js via CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <script>
+        // --- GAME VARIABLES ---
+        let clicks = 0;
+        const maxClicks = 5;
+        let isBroken = false;
+        let hasTricked = false;
+        
+        // --- THREE.JS SETUP ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0a0a);
+        
+        // Add fog for atmospheric look
+        scene.fog = new THREE.Fog(0x0a0a0a, 5, 20);
+
+        // Perspective Camera
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 8;
+        camera.position.y = 1;
+
+        // WebGL Renderer with Shadows
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        container.appendChild(renderer.domElement);
+
+        // --- LIGHTING ---
+        // Ambient Light to illuminate dark areas gently
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+        scene.add(ambientLight);
+
+        // Directional 'Spot' Light for intense shadows and highlights
+        const spotLight = new THREE.SpotLight(0xffffff, 1.8);
+        spotLight.position.set(2, 8, 5);
+        spotLight.angle = Math.PI / 4;
+        spotLight.penumbra = 0.5;
+        spotLight.castShadow = true;
+        
+        // Improve shadow resolution
+        spotLight.shadow.mapSize.width = 1024;
+        spotLight.shadow.mapSize.height = 1024;
+        scene.add(spotLight);
+
+        // --- MODEL & MATERIALS ---
+        
+        // 1. Procedural Texture for Watermelon
+        const canvas = document.createElement('canvas');
+        canvas.width = 1024;
+        canvas.height = 512;
+        const ctx = canvas.getContext('2d');
+        
+        // Base brightish green
+        ctx.fillStyle = '#1e5e2f';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Dark green zig-zag stripes roughly matching a watermelon pattern
+        ctx.fillStyle = '#0b2b13';
+        const numStripes = 14;
+        for (let i = 0; i < numStripes; i++) {
+            const x = (i / numStripes) * canvas.width;
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            for (let y = 0; y <= canvas.height; y += 20) {
+                const offset = Math.sin(y * 0.1) * 15 + Math.random() * 5;
+                ctx.lineTo(x + offset + 15, y);
+            }
+            ctx.lineTo(x - 15, canvas.height);
+            for (let y = canvas.height; y >= 0; y -= 20) {
+                const offset = Math.sin(y * 0.1) * 15 + Math.random() * 5;
+                ctx.lineTo(x + offset - 15, y);
+            }
+            ctx.fill();
+        }
+
+        const texture = new THREE.CanvasTexture(canvas);
+        if(renderer.capabilities.getMaxAnisotropy() > 0){
+            texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        }
+
+        // 2. Geometry (A slightly squished sphere to look organic)
+        const geometry = new THREE.SphereGeometry(2, 64, 64);
+        const positions = geometry.attributes.position;
+        for(let i = 0; i < positions.count; i++) {
+            const y = positions.getY(i);
+            // Squish on y-axis to make it oval
+            positions.setY(i, y * 0.85);
+        }
+        geometry.computeVertexNormals(); // Recompute normals after squishing
+
+        // 3. Material
+        const material = new THREE.MeshStandardMaterial({ 
+            map: texture,
+            roughness: 0.35, // Somewhat shiny
+            metalness: 0.1
+        });
+        
+        // Add to scene
+        const watermelon = new THREE.Mesh(geometry, material);
+        watermelon.castShadow = true;
+        watermelon.receiveShadow = true;
+        scene.add(watermelon);
+
+        // Arrays to hold exploded pieces
+        const fragments = [];
+
+        // --- INTERACTION ---
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        
+        // Animation states
+        let scaleTarget = 1;
+        let currentScale = 1;
+
+        // Resize Handling
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Mouse Click Event
+        window.addEventListener('mousedown', (event) => {
+            if (isBroken) return;
+
+            // Normalized Device Coordinates for Raycasting
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            
+            // Check if ray intersects the watermelon
+            const intersects = raycaster.intersectObject(watermelon);
+
+            if (intersects.length > 0) {
+                // UI & Effects
+                createClickEffect(event.clientX, event.clientY);
+                clicks++;
+
+                // The Trick! When it hits 4 for the first time, drop it back to 1.
+                if (clicks === 4 && !hasTricked) {
+                    hasTricked = true;
+                    clicks = 1;
+
+                    // Change UI text to tilt the player!
+                    document.querySelector('#ui-layer h1').innerText = "Hahaha Yeniden Başkacaağksın! 😜";
+                    
+                    // Start playing the video semi-transparently in the corner
+                    const vid = document.getElementById('esma-video');
+                    vid.style.opacity = "0.6"; // semi-transparent
+                    vid.play().catch(e => console.error("Video play failed:", e));
+                    
+                    // The video should disappear once it is finished playing
+                    vid.onended = () => {
+                        vid.style.opacity = "0";
+                    };
+                }
+
+                document.getElementById('click-counter').innerText = `${clicks} / ${maxClicks}`;
+
+                if (clicks >= maxClicks) {
+                    shatterWatermelon();
+                } else {
+                    // Small damage effect per click
+                    // Build up internal pressure represented by scale
+                    scaleTarget = 1 + (clicks * 0.1); 
+                    
+                    // Add violent visual shake
+                    watermelon.position.x = (Math.random() - 0.5) * 0.8;
+                    watermelon.position.y = (Math.random() - 0.5) * 0.8;
+                    
+                    // Gradually tint background reddish to hint danger
+                    scene.background.lerp(new THREE.Color(0x330000), 0.2);
+                    scene.fog.color.copy(scene.background);
+                }
+            }
+        });
+
+        // 2D DOM screen crack ping effect
+        function createClickEffect(x, y) {
+            const crack = document.createElement('div');
+            crack.className = 'crack';
+            crack.style.left = x + 'px';
+            crack.style.top = y + 'px';
+            document.body.appendChild(crack);
+            setTimeout(() => { crack.remove(); }, 400);
+        }
+
+        // Logic for final destruction
+        function shatterWatermelon() {
+            isBroken = true;
+            
+            // Hide main mesh
+            scene.remove(watermelon);
+
+            // Create explosion pieces (some red chunks, some green outer chunks)
+            const redMat = new THREE.MeshStandardMaterial({ color: 0xe3242b, roughness: 0.6 }); // Inner fruit Red
+            const greenMat = new THREE.MeshStandardMaterial({ color: 0x1e5e2f, roughness: 0.5 }); // Skin Green
+            const seedsMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 }); // Black seeds
+
+            // Generate particles
+            for (let i = 0; i < 200; i++) {
+                const rand = Math.random();
+                let mat;
+                if(rand > 0.8) mat = greenMat; // 20% outer skin pieces
+                else if(rand > 0.75) mat = seedsMat; // 5% seeds
+                else mat = redMat; // 75% red chunks
+                
+                // Random low-poly geometries to look like chunks
+                const r = Math.random() * 0.3 + 0.05;
+                const baseGeom = new THREE.DodecahedronGeometry(r, 0);
+                
+                // Deform slightly to avoid perfect symmetry
+                const pos = baseGeom.attributes.position;
+                for(let j=0; j<pos.count; j++) {
+                    pos.setX(j, pos.getX(j) * (Math.random() * 0.5 + 0.5));
+                    pos.setY(j, pos.getY(j) * (Math.random() * 0.5 + 0.5));
+                    pos.setZ(j, pos.getZ(j) * (Math.random() * 0.5 + 0.5));
+                }
+                baseGeom.computeVertexNormals();
+
+                const fragment = new THREE.Mesh(baseGeom, mat);
+                
+                // Position randomly inside the original volume
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos((Math.random() * 2) - 1);
+                const radius = Math.random() * 1.8;
+                
+                fragment.position.set(
+                    radius * Math.sin(phi) * Math.cos(theta),
+                    radius * Math.cos(phi) * 0.85, 
+                    radius * Math.sin(phi) * Math.sin(theta)
+                );
+                
+                // Establish explosive outward velocity
+                const explosionPower = Math.random() * 1.5 + 0.5;
+                fragment.userData.velocity = fragment.position.clone().normalize().multiplyScalar(explosionPower);
+                // Give extra upwards lift initially
+                fragment.userData.velocity.y += Math.random() * 0.8;
+                
+                // Random spinning applied during animation loop
+                fragment.userData.rotSpeed = new THREE.Vector3(
+                    (Math.random() - 0.5) * 0.4,
+                    (Math.random() - 0.5) * 0.4,
+                    (Math.random() - 0.5) * 0.4
+                );
+
+                fragment.castShadow = true;
+                fragment.receiveShadow = true;
+                
+                scene.add(fragment);
+                fragments.push(fragment);
+            }
+
+            // Reveal the flash overlay immediately on explosion
+            const flash = document.getElementById('flash-overlay');
+            flash.classList.add('active');
+
+            // 1. Play flash.mp3 sound first
+            const flashAudio = new Audio('ses/flash.mp3');
+            
+            // Function to trigger the second sound sequence
+            const playSecondSound = () => {
+                // Remove the flash overlay (bring back the game view / fragments)
+                flash.classList.remove('active');
+                
+                // Show the final text on the normal game view, or you can keep it white
+                // By prompt: "...bu ses dosyası bitince beyaz ekran bitsin" 
+                // So let's keep it white while playing 'recep.mp3'
+            };
+
+            const triggerRecepSound = () => {
+                // 2. Play recep.mp3 while on the white screen
+                const recepAudio = new Audio('ses/recep.mp3');
+                
+                // After recep.mp3 finishes, remove the white screen
+                recepAudio.onended = () => {
+                    flash.classList.remove('active');
+                };
+                
+                recepAudio.onerror = () => {
+                    flash.classList.remove('active'); // fallback if audio fails
+                };
+
+                recepAudio.play().catch(e => {
+                    console.error('recep.mp3 play failed:', e);
+                    flash.classList.remove('active');
+                });
+            };
+
+            // Trigger second sequence when flash audio ends
+            flashAudio.onended = triggerRecepSound;
+            flashAudio.onerror = triggerRecepSound;
+            
+            flashAudio.play().catch(e => {
+                console.error('flash.mp3 play failed:', e);
+                triggerRecepSound();
+            });
+            
+            // Optional: Show the UI text while on white screen
+            setTimeout(() => {
+                document.getElementById('final-text').classList.add('show');
+            }, 500);
+        }
+
+        // --- MAIN ANIMATION LOOP ---
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            const delta = clock.getDelta();
+
+            if (!isBroken) {
+                // Idle floating and rotating
+                watermelon.rotation.y += delta * 0.3;
+                watermelon.rotation.z = Math.sin(clock.elapsedTime) * 0.05;
+
+                // Smoothly recover position after shake (spring effect)
+                watermelon.position.lerp(new THREE.Vector3(0, 0, 0), 0.1);
+                
+                // Smoothly interpolate towards target scale (pulsate/grow effect on hits)
+                currentScale += (scaleTarget - currentScale) * 0.1;
+                watermelon.scale.set(currentScale, currentScale, currentScale);
+                
+            } else {
+                // Animate flying chunks physics
+                for (let i = 0; i < fragments.length; i++) {
+                    const f = fragments[i];
+                    
+                    // Apply velocity to position
+                    f.position.x += f.userData.velocity.x * delta * 5;
+                    f.position.y += f.userData.velocity.y * delta * 5;
+                    f.position.z += f.userData.velocity.z * delta * 5;
+                    
+                    // Simulate heavy gravity pulling fragments down
+                    f.userData.velocity.y -= delta * 3;
+                    
+                    // Render rotation
+                    f.rotation.x += f.userData.rotSpeed.x;
+                    f.rotation.y += f.userData.rotSpeed.y;
+                    f.rotation.z += f.userData.rotSpeed.z;
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // Start Loop
+        animate();
+    </script>
+</body>
+</html>

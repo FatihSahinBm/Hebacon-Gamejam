@@ -4,9 +4,90 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>3D Chase Game</title>
+    <style>
+      body { margin: 0; overflow: hidden; font-family: sans-serif; }
+      #app { width: 100vw; height: 100vh; }
+      
+      /* Main Menu UI */
+      #main-menu {
+        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.8); display: flex; flex-direction: column;
+        align-items: center; justify-content: center; z-index: 100;
+        color: white;
+      }
+      .menu-btn {
+        background: #4488ff; color: white; border: none; padding: 15px 30px;
+        margin: 10px; font-size: 24px; cursor: pointer; border-radius: 8px;
+        transition: 0.2s;
+      }
+      .menu-btn:hover { background: #66aaff; }
+
+      /* Multiplayer Lobby UI */
+      #mp-lobby {
+        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.8); display: none; flex-direction: column;
+        align-items: center; justify-content: center; z-index: 100;
+        color: white;
+      }
+      .input-box {
+        padding: 10px; font-size: 20px; border-radius: 5px; margin: 10px;
+        border: 1px solid #ccc; color: black;
+      }
+      #room-info { display: none; margin-top: 20px; font-size: 24px; color: #00ff88; text-align: center; }
+    </style>
   </head>
   <body>
+    <div id="main-menu">
+      <h1>3D CHASE GAME</h1>
+      <button class="menu-btn" id="btn-sp">Tek Oyunculu</button>
+      <button class="menu-btn" id="btn-mp">Çok Oyunculu</button>
+    </div>
+
+    <div id="mp-lobby">
+      <h1>ÇOK OYUNCULU</h1>
+      <button class="menu-btn" id="btn-create-room">Oda Aç</button>
+      <p>Yada</p>
+      <input type="text" id="input-room-id" class="input-box" placeholder="Oda Kodu">
+      <button class="menu-btn" id="btn-join-room">Odaya Katıl</button>
+      <div id="room-info">Oda Kodu: <span id="room-code-display"></span><br/><br/><button class="menu-btn" id="btn-start-mp">Oyuna Başla</button></div>
+    </div>
+
+    <div id="video-overlay" style="position: absolute; bottom: 20px; right: 20px; width: 320px; height: auto; display: none; z-index: 200; pointer-events: none; border: 2px solid rgba(255,255,255,0.3); border-radius: 10px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
+      <video id="proximity-video" style="width: 100%; height: auto; opacity: 0.8; display: block;">
+        <source src="/losiento.mp4" type="video/mp4">
+      </video>
+    </div>
+
+    <div id="mini-game-overlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: radial-gradient(circle, rgba(200,50,50,0.9) 0%, rgba(50,0,0,0.95) 100%); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 500; color: white; cursor: default;">
+      <h1 style="font-size: 50px; text-shadow: 4px 4px 0px #000; margin-bottom: 20px;">DÖNER YE!</h1>
+      <div id="doner-scroll-view" style="width: 90%; height: 600px; overflow-x: auto; overflow-y: hidden; display: flex; align-items: center; justify-content: flex-start; padding: 20px; gap: 50px; scroll-behavior: smooth;">
+        <div id="doner-list" style="display: flex; gap: 50px;">
+          <!-- Doners will be added here dynamically -->
+        </div>
+      </div>
+
+      <p style="font-size: 24px; margin-top: 20px;">Tıklayarak Döneri Bitir!</p>
+      <button class="menu-btn" id="btn-exit-mini-game" style="position: absolute; top: 20px; right: 20px; background: #ff4444;">ÇIKIŞ</button>
+    </div>
+    <!-- Intro Overlay (Watermelon Smash) -->
+    <div id="intro-overlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 9000; display: none; background: #0a0a0a;">
+      <div id="intro-ui" style="position: fixed; top: 40px; width: 100%; text-align: center; color: white; pointer-events: none; z-index: 9005; user-select: none; text-shadow: 0 2px 4px rgba(0,0,0,0.8);">
+        <h1>Karpuzu Gümletmeye Hazır Mısın?</h1>
+        <p id="intro-click-counter">0 / 5</p>
+      </div>
+      <div id="intro-canvas" style="width: 100%; height: 100%; cursor: pointer;"></div>
+      <div id="intro-flash" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: white; opacity: 0; pointer-events: none; transition: opacity 0.1s ease-out; z-index: 9010; display: flex; justify-content: center; align-items: center;">
+        <div id="intro-final-text" style="opacity: 0; transform: scale(0.9); transition: all 1s ease-out 0.5s; color: black; text-align: center;">
+          <h1 style="font-size: 5rem; margin-bottom: 0;">GÜÜÜÜM!</h1>
+          <p>Geçmiş Olsun, Gitti Güzelim Karpuz...</p>
+        </div>
+      </div>
+      <video id="intro-esma-video" src="/esma.mp4" style="position: fixed; bottom: 20px; right: 20px; width: 300px; opacity: 0; pointer-events: none; z-index: 9004; transition: opacity 1s ease-in-out; border-radius: 10px; box-shadow: 0 0 20px rgba(0,0,0,0.5);" playsinline></video>
+    </div>
+
     <div id="app"></div>
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
+
