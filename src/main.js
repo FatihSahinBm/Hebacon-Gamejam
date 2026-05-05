@@ -38,6 +38,24 @@ let museumMusicPlaying = false;
 const recepSound = new Audio('/Recep İvedik gülüşü.mp3');
 recepSound.volume = 0.8;
 
+// Background music - plays continuously at low volume
+const bgMusic = new Audio('/Recep Ivedik Film Müzikleri - Recep Ivedik Tema Müziği.mp3');
+bgMusic.volume = 0.15;
+bgMusic.loop = true;
+
+// Start background music on first user interaction (browser autoplay policy)
+let bgMusicStarted = false;
+function startBgMusic() {
+  if (!bgMusicStarted) {
+    bgMusicStarted = true;
+    bgMusic.play().catch(() => {});
+    document.removeEventListener('click', startBgMusic);
+    document.removeEventListener('keydown', startBgMusic);
+  }
+}
+document.addEventListener('click', startBgMusic);
+document.addEventListener('keydown', startBgMusic);
+
 // ========== QUEST SYSTEM ==========
 let currentQuestIndex = 0;
 const quests = [
